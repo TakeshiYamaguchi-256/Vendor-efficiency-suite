@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Simple OCR Text Extractor (Gemini) 設定</title>
+  <style>
+    body {
+      font-family: "Helvetica Neue", Arial, sans-serif;
+      padding: 20px;
+      max-width: 800px;
+      margin: 0 auto;
+      background-color: #f9f9f9;
+      color: #333;
+    }
+    h1 {
+      font-size: 22px;
+      margin-bottom: 10px;
+      color: #1a73e8;
+    }
+    .section {
+      margin: 25px 0;
+      padding: 15px;
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    .section h2 {
+      margin-top: 0;
+      font-size: 18px;
+      color: #333;
+    }
+    label {
+      display: block;
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+    input[type="text"], input[type="password"] {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      margin-bottom: 15px;
+    }
+    .api-key-container {
+      position: relative;
+    }
+    .toggle-visibility {
+      position: absolute;
+      right: 10px;
+      top: 10px;
+      cursor: pointer;
+      color: #666;
+      user-select: none;
+    }
+    button {
+      padding: 10px 20px;
+      background-color: #1a73e8;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: background-color 0.2s;
+    }
+    button:hover {
+      background-color: #0d62cb;
+    }
+    button:active {
+      background-color: #0b57b7;
+    }
+    .button-group {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 20px;
+    }
+    .reset-button {
+      background-color: #f44336;
+    }
+    .reset-button:hover {
+      background-color: #d32f2f;
+    }
+    .info-message {
+      margin-top: 8px;
+      color: #666;
+      font-size: 13px;
+      font-style: italic;
+    }
+    .success-message {
+      color: #4caf50;
+      font-weight: bold;
+      margin-top: 10px;
+      display: none;
+    }
+    .error-message {
+      color: #f44336;
+      font-weight: bold;
+      margin-top: 10px;
+      display: none;
+    }
+    .help-link {
+      color: #1a73e8;
+      text-decoration: none;
+    }
+    .help-link:hover {
+      text-decoration: underline;
+    }
+    .language-section {
+      margin-top: 15px;
+    }
+    select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      margin-bottom: 15px;
+      background-color: white;
+    }
+    .radio-group {
+      margin: 10px 0;
+    }
+    .radio-option {
+      display: flex;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .radio-option input[type="radio"] {
+      margin-right: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Simple OCR Text Extractor (Gemini) 設定</h1>
+  
+  <div class="section">
+    <h2>Gemini API 設定</h2>
+    <div class="api-key-container">
+      <label for="apiKey">API キー:</label>
+      <input type="password" id="apiKey" placeholder="Gemini API キーを入力してください">
+      <span class="toggle-visibility" id="toggleVisibility">👁️</span>
+    </div>
+    <div class="info-message">
+      Gemini APIを使用するにはAPIキーが必要です。<a href="https://makersuite.google.com/app/apikey" target="_blank" class="help-link">こちらから取得</a>できます。
+    </div>
+    <button id="saveApiKey">APIキーを保存</button>
+    <div id="apiSuccessMessage" class="success-message">APIキーを保存しました！</div>
+    <div id="apiErrorMessage" class="error-message">APIキーの形式が正しくありません。</div>
+  </div>
+  
+  <div class="section">
+    <h2>OCR設定</h2>
+    
+    <div class="language-section">
+      <label for="language">OCR言語:</label>
+      <select id="language">
+        <option value="ja">日本語</option>
+        <option value="en">英語</option>
+        <option value="ja,en">日本語+英語</option>
+        <option value="zh">中国語</option>
+        <option value="ko">韓国語</option>
+      </select>
+    </div>
+    
+    <div class="model-section">
+      <label for="model">AIモデル:</label>
+      <select id="model">
+        <option value="gemini-2.0-flash">Gemini 2.0 Flash (デフォルト)</option>
+        <option value="gemini-2.5-flash">Gemini 2.5 Flash (最新)</option>
+        <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+      </select>
+      <div class="info-message">
+        文字認識の精度と速度のバランスを調整できます。問題がある場合は別のモデルをお試しください。
+      </div>
+    </div>
+
+    <div class="mode-section">
+      <label>処理モード:</label>
+      <div class="radio-group">
+        <div class="radio-option">
+          <input type="radio" id="accurateMode" name="ocrMode" value="accurate" checked>
+          <label for="accurateMode">精度優先（コンテキスト考慮）</label>
+        </div>
+        <div class="radio-option">
+          <input type="radio" id="fastMode" name="ocrMode" value="fast">
+          <label for="fastMode">速度優先（文字認識のみ）</label>
+        </div>
+      </div>
+      <div class="info-message">
+        「精度優先」モードではGemini APIがコンテキストを考慮して認識精度を高めますが、より多くのトークンを消費します。<br>
+        「速度優先」モードではシンプルな文字認識のみを行い、トークン消費を抑えます。
+      </div>
+    </div>
+    
+    <button id="saveSettings">設定を保存</button>
+    <div id="settingsSuccessMessage" class="success-message">設定を保存しました！</div>
+  </div>
+  
+  <div class="section">
+    <h2>設定のリセット</h2>
+    <div class="info-message">
+      すべての設定をリセットします。この操作は元に戻せません。
+    </div>
+    <div class="button-group">
+      <button id="resetSettings" class="reset-button">すべての設定をリセット</button>
+    </div>
+    <div id="resetSuccessMessage" class="success-message">すべての設定をリセットしました。</div>
+  </div>
+  
+  <script src="config.js"></script>
+</body>
+</html><!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Simple OCR Text Extractor (Gemini) 設定</title>
+  <style>
+    body {
+      font-family: "Helvetica Neue", Arial, sans-serif;
+      padding: 20px;
+      max-width: 800px;
+      margin: 0 auto;
+      background-color: #f9f9f9;
+      color: #333;
+    }
+    h1 {
+      font-size: 22px;
+      margin-bottom: 10px;
+      color: #1a73e8;
+    }
+    .section {
+      margin: 25px 0;
+      padding: 15px;
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    .section h2 {
+      margin-top: 0;
+      font-size: 18px;
+      color: #333;
+    }
+    label {
+      display: block;
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+    input[type="text"], input[type="password"] {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      margin-bottom: 15px;
+    }
+    .api-key-container {
+      position: relative;
+    }
+    .toggle-visibility {
+      position: absolute;
+      right: 10px;
+      top: 10px;
+      cursor: pointer;
+      color: #666;
+      user-select: none;
+    }
+    button {
+      padding: 10px 20px;
+      background-color: #1a73e8;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: background-color 0.2s;
+    }
+    button:hover {
+      background-color: #0d62cb;
+    }
+    button:active {
+      background-color: #0b57b7;
+    }
+    .button-group {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 20px;
+    }
+    .reset-button {
+      background-color: #f44336;
+    }
+    .reset-button:hover {
+      background-color: #d32f2f;
+    }
+    .info-message {
+      margin-top: 8px;
+      color: #666;
+      font-size: 13px;
+      font-style: italic;
+    }
+    .success-message {
+      color: #4caf50;
+      font-weight: bold;
+      margin-top: 10px;
+      display: none;
+    }
+    .error-message {
+      color: #f44336;
+      font-weight: bold;
+      margin-top: 10px;
+      display: none;
+    }
+    .help-link {
+      color: #1a73e8;
+      text-decoration: none;
+    }
+    .help-link:hover {
+      text-decoration: underline;
+    }
+    .language-section {
+      margin-top: 15px;
+    }
+    select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      margin-bottom: 15px;
+      background-color: white;
+    }
+    .radio-group {
+      margin: 10px 0;
+    }
+    .radio-option {
+      display: flex;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .radio-option input[type="radio"] {
+      margin-right: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Simple OCR Text Extractor (Gemini) 設定</h1>
+  
+  <div class="section">
+    <h2>Gemini API 設定</h2>
+    <div class="api-key-container">
+      <label for="apiKey">API キー:</label>
+      <input type="password" id="apiKey" placeholder="Gemini API キーを入力してください">
+      <span class="toggle-visibility" id="toggleVisibility">👁️</span>
+    </div>
+    <div class="info-message">
+      Gemini APIを使用するにはAPIキーが必要です。<a href="https://makersuite.google.com/app/apikey" target="_blank" class="help-link">こちらから取得</a>できます。
+    </div>
+    <button id="saveApiKey">APIキーを保存</button>
+    <div id="apiSuccessMessage" class="success-message">APIキーを保存しました！</div>
+    <div id="apiErrorMessage" class="error-message">APIキーの形式が正しくありません。</div>
+  </div>
+  
+  <div class="section">
+    <h2>OCR設定</h2>
+    
+    <div class="language-section">
+      <label for="language">OCR言語:</label>
+      <select id="language">
+        <option value="ja">日本語</option>
+        <option value="en">英語</option>
+        <option value="ja,en">日本語+英語</option>
+        <option value="zh">中国語</option>
+        <option value="ko">韓国語</option>
+      </select>
+    </div>
+    
+    <div class="model-section">
+      <label for="model">AIモデル:</label>
+      <select id="model">
+        <option value="gemini-2.0-flash">Gemini 2.0 Flash (デフォルト)</option>
+        <option value="gemini-2.5-flash">Gemini 2.5 Flash (最新)</option>
+        <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+      </select>
+      <div class="info-message">
+        文字認識の精度と速度のバランスを調整できます。問題がある場合は別のモデルをお試しください。
+      </div>
+    </div>
+
+    <div class="mode-section">
+      <label>処理モード:</label>
+      <div class="radio-group">
+        <div class="radio-option">
+          <input type="radio" id="accurateMode" name="ocrMode" value="accurate" checked>
+          <label for="accurateMode">精度優先（コンテキスト考慮）</label>
+        </div>
+        <div class="radio-option">
+          <input type="radio" id="fastMode" name="ocrMode" value="fast">
+          <label for="fastMode">速度優先（文字認識のみ）</label>
+        </div>
+      </div>
+      <div class="info-message">
+        「精度優先」モードではGemini APIがコンテキストを考慮して認識精度を高めますが、より多くのトークンを消費します。<br>
+        「速度優先」モードではシンプルな文字認識のみを行い、トークン消費を抑えます。
+      </div>
+    </div>
+    
+    <button id="saveSettings">設定を保存</button>
+    <div id="settingsSuccessMessage" class="success-message">設定を保存しました！</div>
+  </div>
+  
+  <div class="section">
+    <h2>設定のリセット</h2>
+    <div class="info-message">
+      すべての設定をリセットします。この操作は元に戻せません。
+    </div>
+    <div class="button-group">
+      <button id="resetSettings" class="reset-button">すべての設定をリセット</button>
+    </div>
+    <div id="resetSuccessMessage" class="success-message">すべての設定をリセットしました。</div>
+  </div>
+  
+  <script src="config.js"></script>
+</body>
+</html>

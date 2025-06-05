@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Simple OCR Text Extractor (Gemini)</title>
+  <style>
+    body {
+      width: 320px;
+      padding: 15px;
+      font-family: "Helvetica Neue", Arial, sans-serif;
+      color: #333;
+    }
+    h2 {
+      margin-top: 0;
+      color: #1a73e8;
+      font-size: 18px;
+    }
+    .mode-section {
+      margin-top: 15px;
+      background-color: #f9f9f9;
+      padding: 12px;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .toggle-container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .toggle-label {
+      font-weight: 500;
+      color: #444;
+    }
+    .toggle-switch {
+      position: relative;
+      width: 50px;
+      height: 24px;
+      background-color: #ccc;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    .toggle-switch.active {
+      background-color: #1a73e8;
+    }
+    .toggle-slider {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 20px;
+      height: 20px;
+      background-color: white;
+      border-radius: 50%;
+      transition: transform 0.3s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+    .toggle-switch.active .toggle-slider {
+      transform: translateX(26px);
+    }
+    .mode-description {
+      font-size: 12px;
+      color: #666;
+      margin-top: 8px;
+      line-height: 1.4;
+    }
+    .mode-indicator {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-left: 8px;
+    }
+    .mode-manual {
+      background-color: #e3f2fd;
+      color: #1976d2;
+    }
+    .mode-automatic {
+      background-color: #e8f5e9;
+      color: #388e3c;
+    }
+    .shortcut-info {
+      margin-top: 15px;
+      padding: 12px;
+      background-color: #f5f5f5;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .shortcut-key {
+      font-weight: bold;
+      background-color: #e0e0e0;
+      padding: 3px 6px;
+      border-radius: 4px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+    .language-section, .api-section {
+      margin-top: 15px;
+      background-color: #f9f9f9;
+      padding: 12px;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 500;
+      color: #444;
+    }
+    select, input[type="text"] {
+      width: 100%;
+      padding: 8px;
+      margin-top: 5px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background-color: white;
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      margin-top: 10px;
+      background-color: #1a73e8;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 500;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+      transition: background-color 0.2s;
+    }
+    button:hover {
+      background-color: #0d62cb;
+    }
+    button:active {
+      background-color: #0b57b7;
+    }
+    .radio-group {
+      margin-top: 8px;
+    }
+    .radio-option {
+      display: flex;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .radio-option input[type="radio"] {
+      margin-right: 8px;
+    }
+    .info-section {
+      margin-top: 15px;
+      font-size: 13px;
+      color: #666;
+      line-height: 1.4;
+    }
+    .error-container {
+      margin-top: 15px;
+      padding: 10px;
+      border-radius: 4px;
+      background-color: #ffeeee;
+      color: #d32f2f;
+      display: none;
+      font-size: 13px;
+    }
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      margin-top: 15px;
+      font-size: 13px;
+    }
+    .indicator-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 8px;
+    }
+    .indicator-active {
+      background-color: #4CAF50;
+    }
+    .indicator-inactive {
+      background-color: #ff5252;
+    }
+    .help-text {
+      margin-top: 8px;
+      font-size: 12px;
+      color: #666;
+      font-style: italic;
+    }
+    .model-section {
+      margin-top: 15px;
+      background-color: #f9f9f9;
+      padding: 12px;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .api-key-container {
+      position: relative;
+    }
+    .toggle-visibility {
+      position: absolute;
+      right: 10px;
+      top: 35px;
+      cursor: pointer;
+      color: #666;
+      font-size: 18px;
+      user-select: none;
+    }
+  </style>
+</head>
+<body>
+  <h2>Gemini APIテキスト抽出</h2>
+  
+  <!-- OCRモード切り替えセクション -->
+  <div class="mode-section">
+    <div class="toggle-container">
+      <div class="toggle-label">
+        OCRモード
+        <span id="modeIndicator" class="mode-indicator mode-manual">マニュアル</span>
+      </div>
+      <div class="toggle-switch" id="toggleSwitch">
+        <div class="toggle-slider"></div>
+      </div>
+    </div>
+    <div class="mode-description" id="modeDescription">
+      マニュアルモード: ボタンクリックまたはキーボードショートカットでOCRを実行します
+    </div>
+  </div>
+  
+  <div class="api-section">
+    <label for="apiKey">Gemini API キー:</label>
+    <div class="api-key-container">
+      <input type="password" id="apiKey" placeholder="API キーを入力してください">
+      <span class="toggle-visibility" id="toggleVisibility">👁️</span>
+    </div>
+    <div class="help-text">
+      Gemini APIキーが必要です。<a href="https://makersuite.google.com/app/apikey" target="_blank">こちらから取得</a>できます。
+    </div>
+    <button id="saveApiKey">APIキーを保存</button>
+  </div>
+  
+  <div class="language-section">
+    <label for="language">OCR言語:</label>
+    <select id="language">
+      <option value="ja">日本語</option>
+      <option value="en">英語</option>
+      <option value="ja,en">日本語+英語</option>
+      <option value="zh">中国語</option>
+      <option value="ko">韓国語</option>
+    </select>
+  </div>
+  
+  <div class="model-section">
+    <label for="model">AIモデル:</label>
+    <select id="model">
+      <option value="gemini-2.0-flash">Gemini 2.0 Flash (デフォルト)</option>
+      <option value="gemini-2.5-flash">Gemini 2.5 Flash (最新)</option>
+      <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+    </select>
+    <div class="help-text">
+      文字認識の精度と速度のバランスを調整できます。問題がある場合は別のモデルをお試しください。
+    </div>
+  </div>
+
+  <div class="mode-section">
+    <label>処理モード:</label>
+    <div class="radio-group">
+      <div class="radio-option">
+        <input type="radio" id="accurateMode" name="ocrMode" value="accurate" checked>
+        <label for="accurateMode">精度優先（コンテキスト考慮）</label>
+      </div>
+      <div class="radio-option">
+        <input type="radio" id="fastMode" name="ocrMode" value="fast">
+        <label for="fastMode">速度優先（文字認識のみ）</label>
+      </div>
+    </div>
+    <div class="help-text">
+      認識に問題がある場合は「精度優先」モードをお試しください。
+    </div>
+  </div>
+  
+  <div class="shortcut-info">
+    <p><span class="shortcut-key">Alt+Shift+Z</span> キーを押すとOCR処理が実行されます</p>
+  </div>
+  
+  <div id="errorContainer" class="error-container"></div>
+  
+  <div class="status-indicator">
+    <div id="statusDot" class="indicator-dot indicator-inactive"></div>
+    <span id="statusText">確認中...</span>
+  </div>
+  
+  <div class="info-section">
+    <p>Google Gemini APIを使用したOCR処理です。APIキーの設定が必要です。APIキーは端末内に保存され、Google以外には送信されません。</p>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
