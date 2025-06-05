@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            width: 180px;
+            padding: 10px;
+            font-family: Arial, sans-serif;
+        }
+        .effect-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .effect-option {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        label {
+            cursor: pointer;
+        }
+        h3 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <h3>Select Effect:</h3>
+    <form id="effectForm">
+        <div class="effect-group">
+            <div class="effect-option">
+                <input type="radio" id="pulse" name="effect" value="pulse">
+                <label for="pulse">Pulse</label>
+            </div>
+            <div class="effect-option">
+                <input type="radio" id="flame" name="effect" value="flame">
+                <label for="flame">Flame</label>
+            </div>
+            <div class="effect-option">
+                <input type="radio" id="rainbow" name="effect" value="rainbow">
+                <label for="rainbow">Rainbow</label>
+            </div>
+        </div>
+    </form>
+    <script src="popup.js"></script>
+</body>
+</html>
