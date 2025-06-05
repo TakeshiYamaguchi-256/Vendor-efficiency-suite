@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>自動スキップ for RegistVendor</title>
+    <style>
+        body {
+            width: 300px;
+            padding: 15px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        h1 {
+            font-size: 16px;
+            margin: 0 0 15px 0;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        #status {
+            margin-bottom: 15px;
+            padding: 8px;
+            border-radius: 4px;
+            background-color: #f8f9fa;
+            font-size: 14px;
+        }
+
+        #status.running {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        #status.stopped {
+            background-color: #f8f9fa;
+            color: #383d41;
+        }
+
+        button {
+            width: 100%;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+
+        button.start {
+            background-color: #28a745;
+            color: white;
+        }
+
+        button.stop {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        .settings-container {
+            margin: 15px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #fff;
+        }
+
+        .setting-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 5px 0;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .setting-label {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .setting-description {
+            font-size: 12px;
+            color: #666;
+            font-style: italic;
+        }
+
+        .info {
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #fff3cd;
+            border: 1px solid #ffeeba;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #856404;
+        }
+
+        /* スイッチスタイル */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 40px;
+            height: 20px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 20px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 2px;
+            bottom: 2px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #2196F3;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(20px);
+        }
+
+        /* データ操作関連のスタイル */
+        .download-container {
+            margin-top: 15px;
+            padding: 10px;
+            border-top: 1px solid #eee;
+        }
+        
+        .download-button, .upload-button {
+            background-color: #17a2b8;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .upload-button {
+            background-color: #6c757d;
+        }
+        
+        .download-button:hover {
+            background-color: #138496;
+        }
+
+        .upload-button:hover {
+            background-color: #5a6268;
+        }
+        
+        .entry-count {
+            font-size: 12px;
+            color: #6c757d;
+            text-align: center;
+            margin-bottom: 8px;
+        }
+
+        .format-selector {
+            margin: 8px 0;
+            text-align: center;
+        }
+
+        .format-label {
+            display: inline-flex;
+            align-items: center;
+            margin: 0 10px;
+            cursor: pointer;
+        }
+
+        .format-label input[type="radio"] {
+            margin-right: 5px;
+        }
+        
+        .action-icon {
+            width: 16px;
+            height: 16px;
+        }
+
+        .upload-icon {
+            transform: rotate(180deg);
+        }
+
+        /* モード表示 */
+        .mode-indicator {
+            text-align: center;
+            font-size: 11px;
+            color: #666;
+            margin-top: 5px;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <h1>自動スキップ for RegistVendor</h1>
+
+    <div id="status" class="stopped">
+        状態: 停止中
+    </div>
+
+    <button id="toggleButton" class="start">開始</button>
+
+    <div class="settings-container">
+        <label class="setting-item">
+            <div class="setting-label">
+                <span>右クリック機能</span>
+                <span class="setting-description">右クリックでScroll Lockキー送信</span>
+            </div>
+            <div class="switch-container">
+                <label class="switch">
+                    <input type="checkbox" id="rightClickEnabled" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </label>
+
+        <label class="setting-item">
+            <div class="setting-label">
+                <span>動作モード</span>
+                <span class="setting-description">モード1: 従来動作 / モード2: 常にスキップなし</span>
+            </div>
+            <div class="switch-container">
+                <label class="switch">
+                    <input type="checkbox" id="operationMode">
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </label>
+        <div class="mode-indicator" id="modeIndicator">モード1: 従来の動作</div>
+    </div>
+
+    <div class="info">
+        <strong>動作モード説明:</strong><br>
+        <strong>モード1:</strong> 電話番号入力+候補がある場合のみEscapeキーを押さない<br>
+        <strong>モード2:</strong> 常にEscapeキーを押さない（手動操作を想定）
+    </div>
+
+    <!-- データ操作部分 -->
+    <div class="download-container">
+        <div class="entry-count" id="entryCount">保存データ: 0 件</div>
+        
+        <div class="format-selector">
+            <label class="format-label">
+                <input type="radio" name="downloadFormat" value="json" checked> JSON
+            </label>
+            <label class="format-label">
+                <input type="radio" name="downloadFormat" value="csv"> CSV
+            </label>
+        </div>
+
+        <button id="downloadButton" class="download-button">
+            <svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            データをダウンロード
+        </button>
+
+        <div class="upload-container">
+            <input type="file" id="fileInput" accept=".json,.csv" style="display: none;">
+            <button id="uploadButton" class="upload-button">
+                <svg class="action-icon upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                データをアップロード
+            </button>
+        </div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>

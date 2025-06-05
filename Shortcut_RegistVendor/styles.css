@@ -1,0 +1,62 @@
+
+@keyframes subtle-focus-pulse {
+  0%, 100% { 
+    background-color: rgba(0, 123, 255, 0.05);
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.2);
+  }
+  50% { 
+    background-color: rgba(0, 123, 255, 0.1);
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.15);
+  }
+}
+
+.highlight-focus {
+  outline: none;
+  border-color: #007bff !important;
+  animation: subtle-focus-pulse 3s infinite;
+  transition: all 0.3s ease;
+}
+
+.highlight-value {
+  background-color: rgba(40, 167, 69, 0.05) !important;
+  border-color: #28a745 !important;
+  box-shadow: 0 0 0 1px rgba(40, 167, 69, 0.2);
+}
+
+.highlight-focus.highlight-value {
+  animation: subtle-focus-pulse 3s infinite;
+  border-color: #007bff !important;
+}
+
+
+
+
+
+
+
+
+
+.table-container {
+  max-height: 500px;
+  overflow-y: auto;
+  position: relative;
+}
+
+.table-registvendor {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.table-registvendor thead {
+  position: sticky;
+  top: 0;
+  background-color: white;
+  z-index: 1;
+}
+
+.table-registvendor th,
+.table-registvendor td {
+  border: 1px solid #ddd;
+  padding: 8px;
+}
