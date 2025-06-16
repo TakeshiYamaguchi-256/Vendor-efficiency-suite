@@ -391,7 +391,7 @@ if (!window.globalOcrLock) {
   }
   
   // マウスダウンのハンドラー
-
+// content.js の領域選択部分を改善
 function handleMouseDown(e) {
   // 対象が画像かどうかをチェック
   if (e.target.tagName !== 'IMG') {

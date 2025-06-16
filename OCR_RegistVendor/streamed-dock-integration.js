@@ -160,7 +160,7 @@ if (!window.ocrResourceManager) {
     console.log('STREAMED Dock OCR連携を初期化しています...');
     
     // 設定を読み込み
-    loadAutoModeSettings();
+    loadAutoModeSettingsAsync();
     
     // 必要なスタイルを追加
     addGlobalStyles();
@@ -170,6 +170,11 @@ if (!window.ocrResourceManager) {
     
     // イベントリスナーの設定
     setupEventListeners();
+    
+    // 保存監視を追加
+    setupSaveMonitoring();
+    
+    
     
     disableDuplicateClickHandlers();
 
@@ -256,24 +261,71 @@ document.addEventListener('visibilitychange', function() {
   }
 });
 
-  /**
-   * オートモード設定を読み込む
-   */
-  function loadAutoModeSettings() {
-    console.log('オートモード設定を読み込み中...');
-    chrome.storage.local.get(['ocrAutoMode'], function(result) {
-      STATE.isAutoMode = result.ocrAutoMode === true;
-      console.log('オートモード設定:', STATE.isAutoMode ? 'ON' : 'OFF');
-      
-      // オートモードが有効な場合、即座に候補チェックを実行
-      if (STATE.isAutoMode) {
-        console.log('オートモード有効 - 即座に初期候補チェックを実行');
-        // 即座にチェック
-       // setTimeout(() => checkForAutoOcr(), 100);
-
-      }
+/**
+ * オートモード設定を非同期で読み込む（改善版）
+ */
+async function loadAutoModeSettingsAsync() {
+  console.log('オートモード設定を読み込み中...');
+  
+  try {
+    const result = await new Promise((resolve) => {
+      chrome.storage.local.get(['ocrAutoMode'], resolve);
     });
+    
+    STATE.isAutoMode = result.ocrAutoMode === true;
+    console.log('オートモード設定:', STATE.isAutoMode ? 'ON' : 'OFF');
+    
+    // オートモードが有効な場合、段階的に監視とチェックを開始
+    if (STATE.isAutoMode) {
+      console.log('オートモード有効 - 段階的監視開始');
+      
+      // ステップ1: まず監視を開始（即座）
+      setupAutoModeWatcher();
+      
+      // ステップ2: 短時間後に初回チェック（DOM構築待ち）
+      setTimeout(() => {
+        console.log('オートモード: 第1回候補チェック実行');
+        checkForAutoOcr();
+      }, 100);
+      
+      // ステップ3: 少し長めの間隔で再チェック（画像読み込み待ち）
+      setTimeout(() => {
+        if (STATE.isAutoMode && !STATE.hasTriggeredAutoOcr && !STATE.isProcessing) {
+          console.log('オートモード: 第2回候補チェック実行（画像読み込み待ち）');
+          checkForAutoOcr();
+        }
+      }, 400);
+      
+      // ステップ4: 最終チェック（完全な初期化待ち）
+      setTimeout(() => {
+        if (STATE.isAutoMode && !STATE.hasTriggeredAutoOcr && !STATE.isProcessing) {
+          console.log('オートモード: 最終候補チェック実行');
+          checkForAutoOcr();
+        }
+      }, 750);
+    } else {
+      console.log('オートモード無効 - 監視はスキップします');
+    }
+  } catch (error) {
+    console.error('オートモード設定読み込みエラー:', error);
+    STATE.isAutoMode = false;
   }
+}
+
+/**
+ * 同期版オートモード設定読み込み（後方互換性のため）
+ */
+function loadAutoModeSettings() {
+  // 非同期版を呼び出す（Promiseは放置）
+  loadAutoModeSettingsAsync().catch(console.error);
+}
+
+
+
+
+
+
+
 
 // グローバル変数でObserverを管理
 let globalObserver = null;
@@ -350,7 +402,7 @@ function setupAutoModeWatcher() {
       }
       
       // 画像変更の場合は短い遅延、DOM変更の場合は即座実行
-      const delay = hasImageChanges ? 200 : 50; // 画像: 500ms、DOM: 100ms
+      const delay = hasImageChanges ? 500 : 100; // 画像: 500ms、DOM: 100ms
       
       checkTimeout = setTimeout(() => {
         if (STATE.isAutoMode && !STATE.hasTriggeredAutoOcr && !STATE.isProcessing) {
@@ -377,7 +429,7 @@ function setupAutoModeWatcher() {
     }
     console.log('フォールバック候補チェックを実行');
     checkForAutoOcr();
-  }, 1500); // 5秒 → 1.5秒に短縮
+  }, 750); 
   
   // ページ離脱時のクリーンアップ
   window.addEventListener('beforeunload', () => {
@@ -418,7 +470,7 @@ function setupAutoModeWatcher() {
       // 既に読み込み完了している場合 - 即座に実行
       console.log('画像は既に読み込み完了 - 即座に候補チェックを実行');
       //checkForAutoOcr(); // 即座実行
-      //setTimeout(() => checkForAutoOcr(), 200); // 追加チェック
+ 
     } else {
       // 読み込み完了を待つ
       console.log('画像の読み込み完了を待機中...');
@@ -429,7 +481,7 @@ function setupAutoModeWatcher() {
         });
         // 読み込み完了後即座に実行
         //checkForAutoOcr();
-        //setTimeout(() => checkForAutoOcr(), 200); // バックアップチェック
+      
       };
       
       // エラー時の処理
@@ -484,59 +536,98 @@ function setupAutoModeWatcher() {
   }
 
 /**
- * テーブルに候補があるかチェックして自動OCRを実行
+ * テーブルに候補があるかチェックして自動OCRを実行（強化版）
  */
 function checkForAutoOcr() {
+  console.log('=== オートOCRチェック開始 ===');
+  console.log('現在の状態:', {
+    isAutoMode: STATE.isAutoMode,
+    hasTriggeredAutoOcr: STATE.hasTriggeredAutoOcr,
+    isProcessing: STATE.isProcessing
+  });
+  
   if (!STATE.isAutoMode || STATE.hasTriggeredAutoOcr || STATE.isProcessing) {
+    console.log('オートOCRスキップ: 条件不一致');
     return;
   }
   
-  // 画像読み込み完了チェック
+  // 画像読み込み完了チェック（強化版）
   const img = findImageElement();
+  console.log('画像要素チェック:', {
+    found: !!img,
+    complete: img ? img.complete : false,
+    naturalSize: img ? `${img.naturalWidth}x${img.naturalHeight}` : 'N/A',
+    displaySize: img ? `${img.clientWidth}x${img.clientHeight}` : 'N/A'
+  });
+  
   if (!img || !img.complete || img.naturalWidth === 0) {
-    console.log('画像が読み込まれていないため自動OCRをスキップ');
+    console.log('画像読み込み未完了のため自動OCRをスキップ');
     return;
   }
   
-  // ===== 変更箇所：フラグ設定を候補チェック後に移動 =====
   console.log('自動OCR条件をチェック中...');
   
   const hasCandidates = checkHasCandidates();
   console.log('テーブル候補チェック結果:', hasCandidates);
   
   if (!hasCandidates.hasResults) {
-    // 候補なしの場合のみフラグを設定
-    STATE.hasTriggeredAutoOcr = true; 
+    console.log('候補なし - 再チェック後にOCR実行を判定します');
     
-    console.log('候補なし - 自動OCRを即座に実行します');
-
-    
-    // APIキーをチェック
-    chrome.storage.local.get(['geminiApiKey'], function(result) {
-      if (!result.geminiApiKey) {
-        console.log('APIキーが設定されていないため自動OCRをスキップ');
-        showNotification('自動OCR: APIキーが設定されていません', 'warning');
-        STATE.hasTriggeredAutoOcr = false; // フラグをリセット
+    // 再チェック機能（改善版）
+    setTimeout(() => {
+      // 再チェック時の条件確認
+      if (!STATE.isAutoMode || STATE.hasTriggeredAutoOcr || STATE.isProcessing) {
+        console.log('再チェック時: 条件が変更されたためスキップ');
         return;
       }
       
-      // 自動OCR実行通知
-      showNotification('候補が見つからないため自動OCRを実行中...', 'info', 3000);
+      console.log('=== 再チェック実行 ===');
+      const recheckResult = checkHasCandidates();
+      console.log('再チェック結果:', recheckResult);
       
-      // 全体OCRを即座に実行（遅延を最小限に）
-     // setTimeout(() => {
-        processFullImage();
-      //}, 100);
-    });
+      if (!recheckResult.hasResults) {
+        // フラグ設定を再チェック後に移動
+        STATE.hasTriggeredAutoOcr = true;
+        console.log('再チェック後も候補なし - 自動OCRを実行します');
+        
+        // APIキーをチェック
+        chrome.storage.local.get(['geminiApiKey'], function(result) {
+          if (!result.geminiApiKey) {
+            console.log('APIキーが設定されていないため自動OCRをスキップ');
+            showNotification('自動OCR: APIキーが設定されていません', 'warning');
+            STATE.hasTriggeredAutoOcr = false; // フラグをリセット
+            return;
+          }
+          
+          // 最終的な重複チェック
+          if (STATE.isProcessing) {
+            console.log('処理中のため自動OCRをスキップ');
+            STATE.hasTriggeredAutoOcr = false; // フラグをリセット
+            return;
+          }
+          
+          // 自動OCR実行通知
+          showNotification('候補が見つからないため自動OCRを実行中...', 'info', 3000);
+          
+          console.log('=== 自動OCR実行開始 ===');
+          // 全体OCRを実行
+          processFullImage();
+        });
+      } else {
+        console.log('再チェックで候補が見つかったため自動OCRをスキップ:', recheckResult.reason);
+      }
+    }, 400); // 0.4秒後に再実行
+    
   } else {
     console.log('候補が見つかったため自動OCRをスキップ:', hasCandidates.reason);
-    
   }
+  
+  console.log('=== オートOCRチェック終了 ===');
 }
 
-  /**
-   * より詳細な候補存在チェック
-   */
+/**
+ * より詳細な候補存在チェック（電話番号フィールドチェック追加）
+ */
 function checkHasCandidates() {
   // 1. テーブル要素の存在チェック
   const table = document.querySelector('.table-registvendor');
@@ -562,12 +653,25 @@ function checkHasCandidates() {
     };
   }
   // ===========================
+  // 4. 電話番号フィールドが空かどうかをチェック
+  const phoneField = document.querySelector('[data-input-text="phone-number"]');
+  const isPhoneFieldEmpty = !phoneField || !phoneField.value || phoneField.value.trim() === '';
   
-  // 4. ラジオボタンの存在チェック
+  // 電話番号フィールドが空の場合は候補なしと判定
+  if (isPhoneFieldEmpty) {
+    console.log('電話番号フィールドが空のため候補なし');
+    return {
+      hasResults: false,
+      reason: '電話番号フィールドが空です'
+    };
+  }
+  // =======================================
+  
+  // 5. ラジオボタンの存在チェック
   const radioButtons = document.querySelectorAll('.table-registvendor input[type="radio"][name="select_vendor_id"]');
   const radioButtonsWithValue = Array.from(radioButtons).filter(radio => radio.value && radio.value.trim() !== '');
   
-  // 5. テーブル内の行数チェック
+  // 6. テーブル内の行数チェック
   const tableRows = document.querySelectorAll('.table-registvendor tbody tr');
   const visibleRows = Array.from(tableRows).filter(row => 
     row.style.display !== 'none' && 
@@ -575,13 +679,13 @@ function checkHasCandidates() {
     row.offsetParent !== null
   );
   
-  // 6. 行に実際のデータが含まれているかチェック
+  // 7. 行に実際のデータが含まれているかチェック
   const rowsWithData = visibleRows.filter(row => {
     const cells = row.querySelectorAll('td');
     return Array.from(cells).some(cell => cell.textContent && cell.textContent.trim() !== '' && cell.textContent.trim() !== '-');
   });
   
-  // 7. 検索結果メッセージのチェック（元の位置から移動）
+  // 8. 検索結果メッセージのチェック
   const searchResultMessage = document.querySelector('#search_result_message');
   const hasSearchMessage = searchResultMessage && 
                           searchResultMessage.textContent && 
@@ -591,7 +695,9 @@ function checkHasCandidates() {
   console.log('候補チェック詳細:', {
     table: !!table,
     isTableVisible: isTableVisible,
-    isNoVendorVisible: isNoVendorVisible, // ← 追加
+    isNoVendorVisible: isNoVendorVisible,
+    isPhoneFieldEmpty: isPhoneFieldEmpty, 
+    phoneFieldValue: phoneField ? phoneField.value : 'フィールドなし', 
     radioButtons: radioButtons.length,
     radioButtonsWithValue: radioButtonsWithValue.length,
     tableRows: tableRows.length,
@@ -624,6 +730,8 @@ function checkHasCandidates() {
     reason = 'テーブルが非表示です';
   } else if (isNoVendorVisible) {
     reason = 'No Vendorラベルが表示されています';
+  } else if (isPhoneFieldEmpty) {
+    reason = '電話番号フィールドが空です'; 
   } else if (visibleRows.length === 0) {
     reason = '表示されている行がありません';
   } else if (radioButtonsWithValue.length === 0) {
@@ -2134,6 +2242,7 @@ function makeDraggableIndependent(element, positionUpdateCallback) {
    */
 
 function setupEventListeners() {
+
   // 領域選択ボタン
   const areaButton = document.querySelector('.ocr-area-btn');
   if (areaButton) {
@@ -2252,8 +2361,41 @@ function setupEventListeners() {
       endAreaSelection();
     }
   });
+  // スペースキーリスナーを追加
+  setupSpaceKeyListener();
+
 }
+// 履歴ドロップダウン用のスタイルを追加
+const historyStyles = document.createElement('style');
+historyStyles.textContent = `
+  .payee-history-dropdown .ocr-preview-header,
+  .payee-history-dropdown div:first-child {
+    background-color: #e6e0f8 !important;
+    color: #4a3a6b !important;
+  }
   
+  .payee-history-dropdown {
+    border-color: #e6e0f8 !important;
+  }
+  
+  .payee-history-dropdown .ocr-dropdown-title {
+    background-color: #e6e0f8 !important;
+    color: #4a3a6b !important;
+    font-weight: bold;
+  }
+  
+  .payee-history-dropdown .ocr-dropdown-item {
+    border-left: 3px solid #e6e0f8;
+    padding-left: 15px;
+  }
+  
+  .payee-history-dropdown .ocr-dropdown-item:hover {
+    background-color: #d5c9f0 !important;
+    color: #4a3a6b !important;
+  }
+`;
+
+document.head.appendChild(historyStyles);
   /**
    * フィールドをハイライト表示
    */
@@ -2374,7 +2516,7 @@ function startAreaSelection(predefinedFieldType) {
         Escキーまたは全体OCRボタンでキャンセル
       </small>
     `;
-    overlay.appendChild(overlayText);
+    //overlay.appendChild(overlayText);
     
     viewer.appendChild(overlay);
     
@@ -3610,9 +3752,7 @@ function isValidPhoneNumber(phoneNumber) {
 
 
 /**
- * 共通のドロップダウン表示関数 - バブルスタイルをチェックボックスの右側に配置
- * @param {Object} options - 設定オプション
- * @returns {HTMLElement} ドロップダウン要素
+ * 共通のドロップダウン表示関数（履歴対応版）
  */
 function showDropdown(options) {
   const { id, title, items, targetField, formatter, onSelect } = options;
@@ -3657,34 +3797,56 @@ function showDropdown(options) {
   dropdownContainer.id = id;
   dropdownContainer.className = 'ocr-dropdown-container ocr-bubble-dropdown';
   
+  // 履歴ドロップダウンの場合のクラス追加
+  if (id === 'payee-history-dropdown') {
+    dropdownContainer.classList.add('payee-history-dropdown');
+  }
+  
   // 基本のz-indexを設定
   const baseZIndex = 100000;
   
-// ドロップダウンコンテナの位置設定を調整
-// チェックボックスの位置情報を取得
-const checkboxRect = checkbox ? checkbox.getBoundingClientRect() : 
-                   targetField.getBoundingClientRect();
- // 入力フィールドの高さ情報を取得
-const inputFieldRect = targetField.getBoundingClientRect();
+  // チェックボックスの位置情報を取得
+  const checkboxRect = checkbox ? checkbox.getBoundingClientRect() : 
+                     targetField.getBoundingClientRect();
+  // 入力フィールドの高さ情報を取得
+  const inputFieldRect = targetField.getBoundingClientRect();
 
   // バブルスタイルの設定
   dropdownContainer.style.cssText = `
-  position: absolute;
-  z-index: ${baseZIndex};
-  background-color: white;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  box-shadow: 0 3px 10px rgba(0,0,0,0.3);
-  max-height: 230px;
-  max-width: 300px;
-  width: auto;
-  left: ${checkboxRect.right + 10}px;
-  top: ${inputFieldRect.top}px; /* 入力フィールドの上端に合わせる */
-  overflow: visible; /* ヘッダーが外にはみ出すのを許可 */
-  font-family: sans-serif;
-  font-size: 14px;
-  transition: box-shadow 0.2s ease;
+    position: absolute;
+    z-index: ${baseZIndex};
+    background-color: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.3);
+    max-height: 230px;
+    max-width: 300px;
+    width: auto;
+    left: ${checkboxRect.right + 10}px;
+    top: ${inputFieldRect.top}px;
+    overflow: visible;
+    font-family: sans-serif;
+    font-size: 14px;
+    transition: box-shadow 0.2s ease;
   `;
+  
+// 履歴ドロップダウンの場合は位置調整
+if (id === 'payee-history-dropdown') {
+  // デフォルト位置は通常の支払先名ドロップダウンと同じX位置
+  let baseLeft = checkboxRect.right + 10;
+  let baseTop = inputFieldRect.top;
+  
+  // OCRドロップダウンが存在する場合はその右側に移動
+  const ocrDropdown = document.getElementById('payee-name-dropdown');
+  if (ocrDropdown) {
+    const ocrRect = ocrDropdown.getBoundingClientRect();
+    baseLeft = ocrRect.right + 20; // OCRドロップダウンの右側20px
+    baseTop = ocrRect.top; // 同じY位置
+  }
+  
+  dropdownContainer.style.left = baseLeft + 'px';
+  dropdownContainer.style.top = baseTop + 'px';
+}
   
   // 左向きの矢印を追加
   const arrow = document.createElement('div');
@@ -3703,31 +3865,32 @@ const inputFieldRect = targetField.getBoundingClientRect();
   
   // ヘッダー部分
   const header = document.createElement('div');
+  const headerBgColor = id === 'payee-history-dropdown' ? '#e6e0f8' : '#1a73e8';
+  const headerTextColor = id === 'payee-history-dropdown' ? '#4a3a6b' : 'white';
   header.style.cssText = `
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 12px;
-  background-color: #1a73e8;
-  color: white;
-  position: relative; /* 相対位置指定 */
-  border-radius: 16px; /* 全体を丸める */
-  border-bottom-left-radius: 0; /* 左下の丸めをキャンセル */
-  border-bottom-right-radius: 16px; /* 右下を大きく丸める */
-  border-top-right-radius: 16px; /* 右上を大きく丸める */
-  border-top-left-radius: 16px; /* 左上を大きく丸める */
-  margin-right: -8px; /* 右側に少し膨らませる */
-  right: -8px; /* 右に出っ張らせる */
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background-color: ${headerBgColor};
+    color: white;
+    position: relative;
+    border-radius: 16px;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 16px;
+    border-top-right-radius: 16px;
+    border-top-left-radius: 16px;
+    margin-right: -8px;
+    right: -8px;
   `;
   
   // タイトル部分
   const titleElement = document.createElement('div');
   titleElement.style.cssText = `
-     font-weight: 500;
-      flex-grow: 1;
-      display: flex;
-      align-items: center;
-
+    font-weight: 500;
+    flex-grow: 1;
+    display: flex;
+    align-items: center;
   `;
   
   // タイトルテキスト
@@ -3737,28 +3900,27 @@ const inputFieldRect = targetField.getBoundingClientRect();
   
   // 優先度制御用のハンドルを追加
   const handle = document.createElement('span');
-  handle.innerHTML = '&#8942;'; // 垂直の3点リーダー
+  handle.innerHTML = '&#8942;';
   handle.className = 'ocr-dropdown-handle';
   handle.style.cssText = `
-  position: absolute; /* 絶対位置指定 */
-  right: -12px; /* 右に出っ張らせる */
-  top: 50%;
-  transform: translateY(-50%); /* 垂直中央揃え */
-  width: 24px;
-  height: 24px;
-  background-color: rgba(255, 255, 255, 0.6); /* 少し濃くして目立たせる */
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background-color 0.2s;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.2); /* 少し影をつける */
-  z-index: 1; /* ヘッダーより前面に表示 */
+    position: absolute;
+    right: -12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 24px;
+    background-color: rgba(255, 255, 255, 0.6);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    z-index: 1;
   `;
-  // ドロップダウンコンテナのスタイル調整 - オーバーフロー許可
-dropdownContainer.style.overflow = 'visible'; /* ヘッダーが外にはみ出ることを許可 */
+  
   // ハンドルのホバーエフェクト
   handle.addEventListener('mouseover', () => {
     handle.style.backgroundColor = 'rgba(255, 255, 255, 0.4)';
@@ -3767,66 +3929,52 @@ dropdownContainer.style.overflow = 'visible'; /* ヘッダーが外にはみ出�
   handle.addEventListener('mouseout', () => {
     handle.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
   });
-  
-// ハンドルのクリックイベントリスナー（修正版）
-handle.addEventListener('click', (e) => {
-  // イベント伝播を停止
-  e.preventDefault();
-  e.stopPropagation();
-  
-  // リストコンテナの参照を取得
-  const listContainer = dropdownContainer.querySelector('div:last-child'); // リスト部分
-  
-  // 現在の表示状態を取得
-  const isCollapsed = listContainer.style.display === 'none';
-  
-  if (isCollapsed) {
-    // 展開する
-    listContainer.style.display = 'block';
-    dropdownContainer.style.height = 'auto';
-    handle.innerHTML = '&#9650;'; // 上向き矢印
-    handle.style.backgroundColor = '#4CAF50'; // 緑色に変更
-  } else {
-    // 折りたたむ
-    listContainer.style.display = 'none';
-    dropdownContainer.style.height = header.offsetHeight + 'px'; // ヘッダーの高さのみ
-    handle.innerHTML = '&#9660;'; // 下向き矢印
-    handle.style.backgroundColor = 'rgba(255, 255, 255, 0.6)'; // 元の色に戻す
-  }
-  
-  // z-indexの最前面表示も維持（必要に応じて）
-  if (isCollapsed) {
-    // 他のすべてのドロップダウンを見つける
-    const allDropdowns = document.querySelectorAll('.ocr-dropdown-container');
+
+  // ハンドルのクリックイベントリスナー
+  handle.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     
-    // 現在の最大Z-indexを取得
-    let maxZIndex = 100000; // 基本値
-    allDropdowns.forEach((dropdown) => {
-      const zIndex = parseInt(dropdown.style.zIndex || '100000', 10);
-      if (!isNaN(zIndex)) {
-        maxZIndex = Math.max(maxZIndex, zIndex);
-      }
-    });
+    const listContainer = dropdownContainer.querySelector('div:last-child');
+    const isCollapsed = listContainer.style.display === 'none';
     
-    // このドロップダウンを最前面に表示
-    const newZIndex = maxZIndex + 10;
-    dropdownContainer.style.zIndex = newZIndex;
+    if (isCollapsed) {
+      listContainer.style.display = 'block';
+      dropdownContainer.style.height = 'auto';
+      handle.innerHTML = '&#9650;';
+      handle.style.backgroundColor = '#4CAF50';
+    } else {
+      listContainer.style.display = 'none';
+      dropdownContainer.style.height = header.offsetHeight + 'px';
+      handle.innerHTML = '&#9660;';
+      handle.style.backgroundColor = 'rgba(255, 255, 255, 0.6)';
+    }
     
-    // すべてのハンドルのスタイルをリセット
-    allDropdowns.forEach((dropdown) => {
-      const dropdownHandle = dropdown.querySelector('.ocr-dropdown-handle');
-      if (dropdownHandle && dropdownHandle !== handle) {
-        dropdownHandle.style.backgroundColor = 'rgba(255, 255, 255, 0.6)';
-      }
-    });
-  }
+    if (isCollapsed) {
+      const allDropdowns = document.querySelectorAll('.ocr-dropdown-container');
+      let maxZIndex = 100000;
+      allDropdowns.forEach((dropdown) => {
+        const zIndex = parseInt(dropdown.style.zIndex || '100000', 10);
+        if (!isNaN(zIndex)) {
+          maxZIndex = Math.max(maxZIndex, zIndex);
+        }
+      });
+      
+      const newZIndex = maxZIndex + 10;
+      dropdownContainer.style.zIndex = newZIndex;
+      
+      allDropdowns.forEach((dropdown) => {
+        const dropdownHandle = dropdown.querySelector('.ocr-dropdown-handle');
+        if (dropdownHandle && dropdownHandle !== handle) {
+          dropdownHandle.style.backgroundColor = 'rgba(255, 255, 255, 0.6)';
+        }
+      });
+    }
+    
+    const message = isCollapsed ? 'ドロップダウンを展開しました' : 'ドロップダウンを折りたたみました';
+    showNotification(message, 'info', 1000);
+  });
   
-  // 成功メッセージ
-  const message = isCollapsed ? 'ドロップダウンを展開しました' : 'ドロップダウンを折りたたみました';
-  showNotification(message, 'info', 1000);
-});
-  
-  // ハンドルをタイトル要素に追加
   titleElement.appendChild(handle);
   
   // 閉じるボタン
@@ -3840,12 +3988,10 @@ handle.addEventListener('click', (e) => {
     padding: 0 4px;
   `;
   
-  // 閉じるボタンのクリックイベント
   closeButton.addEventListener('click', () => {
     dropdownContainer.remove();
   });
   
-  // ホバーエフェクト
   closeButton.addEventListener('mouseover', () => {
     closeButton.style.opacity = '1';
   });
@@ -3854,7 +4000,6 @@ handle.addEventListener('click', (e) => {
     closeButton.style.opacity = '0.8';
   });
   
-  // ヘッダー要素の組み立て
   header.appendChild(titleElement);
   header.appendChild(closeButton);
   dropdownContainer.appendChild(header);
@@ -3864,7 +4009,7 @@ handle.addEventListener('click', (e) => {
   listContainer.style.cssText = `
     max-height: 200px;
     overflow-y: auto;
-    transition: all 0.3s ease; /* アニメーション効果 */
+    transition: all 0.3s ease;
   `;
   
   // 項目を追加
@@ -3878,24 +4023,32 @@ handle.addEventListener('click', (e) => {
       transition: background-color 0.15s;
     `;
     
+    // 履歴ドロップダウンの場合のスタイル調整
+    if (id === 'payee-history-dropdown') {
+      itemElement.style.borderLeft = '3px solid #e6e0f8';
+      itemElement.style.paddingLeft = '15px';
+    }
+    
     // ホバーエフェクト
     itemElement.addEventListener('mouseover', () => {
-      itemElement.style.backgroundColor = '#f5f5f5';
+      if (id === 'payee-history-dropdown') {
+        itemElement.style.backgroundColor = '#d5c9f0';
+        itemElement.style.color = '#4a3a6b';
+      } else {
+        itemElement.style.backgroundColor = '#f5f5f5';
+      }
     });
     itemElement.addEventListener('mouseout', () => {
       itemElement.style.backgroundColor = 'white';
+      itemElement.style.color = '';
     });
     
     // クリックイベント
     itemElement.addEventListener('click', (e) => {
-      // イベントの伝播を止める
       e.preventDefault();
       e.stopPropagation();
       
-      // コールバック実行
       if (onSelect) onSelect(item);
-      
-      // Enterキーを押したようにシミュレート
       simulateKeyPress(targetField, 'Enter');
     });
     
@@ -3911,7 +4064,6 @@ handle.addEventListener('click', (e) => {
   // ドロップダウンが配置できない場合の自動位置調整
   adjustDropdownPosition(dropdownContainer);
   
-  // 作成したドロップダウンを返す
   return dropdownContainer;
 }
 
@@ -4169,11 +4321,125 @@ function showPhoneNumberDropdown(phoneNumbers, originalText = '') {
   }
 }
 
+// 履歴管理クラス
+class PayeeNameHistory {
+  constructor() {
+    this.maxItems = 32;
+    this.storageKey = 'payeeNameHistory';
+    this.currentSortMode = 'date';
+  }
+
+  // 履歴を取得
+  async getHistory() {
+    try {
+      const result = await chrome.storage.local.get([this.storageKey]);
+      return result[this.storageKey] || [];
+    } catch (error) {
+      console.error('履歴取得エラー:', error);
+      return [];
+    }
+  }
+
+  // 履歴に追加
+  async addToHistory(payeeName) {
+    if (!payeeName || payeeName.trim() === '') return;
+    
+    try {
+      const history = await this.getHistory();
+      const trimmedName = payeeName.trim();
+      
+      // 既存の同じ名前を削除（重複排除）
+      const filteredHistory = history.filter(item => item.name !== trimmedName);
+      
+      // 新しいアイテムを先頭に追加
+      const newItem = {
+        name: trimmedName,
+        timestamp: Date.now(),
+        dateAdded: new Date().toLocaleString('ja-JP')
+      };
+      
+      filteredHistory.unshift(newItem);
+      
+      // 最大件数を超えた分を削除
+      if (filteredHistory.length > this.maxItems) {
+        filteredHistory.splice(this.maxItems);
+      }
+      
+      // 保存
+      await chrome.storage.local.set({ [this.storageKey]: filteredHistory });
+      console.log('履歴に追加:', trimmedName);
+    } catch (error) {
+      console.error('履歴追加エラー:', error);
+    }
+  }
+
+  // 履歴をクリア
+  async clearHistory() {
+    try {
+      await chrome.storage.local.remove([this.storageKey]);
+      console.log('履歴をクリアしました');
+    } catch (error) {
+      console.error('履歴クリアエラー:', error);
+    }
+  }
+
+  // ソートモードを切り替え
+  toggleSortMode() {
+    switch (this.currentSortMode) {
+      case 'date':
+        this.currentSortMode = 'asc';
+        break;
+      case 'asc':
+        this.currentSortMode = 'desc';
+        break;
+      case 'desc':
+        this.currentSortMode = 'date';
+        break;
+    }
+    console.log('ソートモード変更:', this.currentSortMode);
+    return this.currentSortMode;
+  }
+
+  // 履歴をソート
+  sortHistory(history) {
+    const sortedHistory = [...history]; // 元の配列を変更しない
+    
+    switch (this.currentSortMode) {
+      case 'asc':
+        return sortedHistory.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+      case 'desc':
+        return sortedHistory.sort((a, b) => b.name.localeCompare(a.name, 'ja'));
+      case 'date':
+      default:
+        return sortedHistory.sort((a, b) => b.timestamp - a.timestamp);
+    }
+  }
+
+  // ソートモードの表示名を取得
+  getSortModeDisplayName() {
+    switch (this.currentSortMode) {
+      case 'asc':
+        return '履歴から選択 ↑';
+      case 'desc':
+        return '履歴から選択 ↓';
+      case 'date':
+      default:
+        return '履歴から選択 📅';
+    }
+  }
+}
+
+// グローバルインスタンス
+const payeeNameHistory = new PayeeNameHistory();
+
+
+
+
+
+
+
 /**
- * フィールドにテキストを入力する関数
- * @param {string} text - 入力するテキスト
- * @param {string} fieldType - フィールドタイプ
- * @returns {boolean} - 入力成功したかどうか
+ * フィールドにテキストを入力する関数（履歴保存機能付き）
  */
 function fillTextField(text, fieldType) {
   if (!text) return false;
@@ -4211,7 +4477,6 @@ function fillTextField(text, fieldType) {
       // テキストを入力
       targetInput.value = text.trim();
 
-
       // 支払先名の場合、電話番号関連の文字列をチェック
       if (fieldType === 'payee-name') {
         const value = targetInput.value;
@@ -4223,9 +4488,8 @@ function fillTextField(text, fieldType) {
           showNotification('支払先名に電話番号関連の内容が含まれているためクリアしました', 'warning');
           return false;
         }
+
       }
-
-
       
       // イベント発火
       const inputEvent = new Event('input', { bubbles: true });
@@ -4256,7 +4520,7 @@ function fillTextField(text, fieldType) {
           console.log('検索ボタンを自動クリックします:', searchButton);
           searchButton.click();
         }
-      }, 300);
+      }, 150);
       
       return true;
     } catch (err) {
@@ -4270,6 +4534,368 @@ function fillTextField(text, fieldType) {
     return false;
   }
 }
+
+
+
+function setupSaveMonitoring() {
+  console.log('保存操作の監視を開始します');
+  
+  // 保存ボタンやフォーム送信を監視
+  const saveButtons = [
+    '[data-save]',
+    '.btn-save',
+    '.save-button',
+    'button[type="submit"]',
+    'input[type="submit"]',
+    // STREAMED Dock 固有の保存ボタン
+    '.btn-primary',
+    '.submit-btn'
+  ];
+  
+  // 各種保存ボタンにクリックイベントリスナーを追加
+  saveButtons.forEach(selector => {
+    const buttons = document.querySelectorAll(selector);
+    buttons.forEach(button => {
+      // 重複リスナーを避けるため、一度削除してから追加
+      button.removeEventListener('click', handleSaveClick);
+      button.addEventListener('click', handleSaveClick);
+    });
+  });
+  
+  // フォーム送信も監視
+  const forms = document.querySelectorAll('form');
+  forms.forEach(form => {
+    form.removeEventListener('submit', handleFormSubmit);
+    form.addEventListener('submit', handleFormSubmit);
+  });
+  
+  // MutationObserver で動的に追加されるボタンも監視
+  const observer = new MutationObserver(function(mutations) {
+    mutations.forEach(function(mutation) {
+      mutation.addedNodes.forEach(function(node) {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          // 新しく追加されたボタンにもリスナーを設定
+          saveButtons.forEach(selector => {
+            if (node.matches && node.matches(selector)) {
+              node.addEventListener('click', handleSaveClick);
+            }
+            // 子要素もチェック
+            const childButtons = node.querySelectorAll && node.querySelectorAll(selector);
+            if (childButtons) {
+              childButtons.forEach(btn => btn.addEventListener('click', handleSaveClick));
+            }
+          });
+        }
+      });
+    });
+  });
+  
+  observer.observe(document.body, { childList: true, subtree: true });
+  window.ocrResourceManager.register('observer', observer);
+}
+
+function handleSaveClick(event) {
+  console.log('保存ボタンがクリックされました:', event.target);
+  
+  // 少し遅延させて、保存処理が完了してから履歴に追加
+  setTimeout(() => {
+    checkAndSaveToHistory();
+  }, 500); // 0.5秒後にチェック
+}
+
+function handleFormSubmit(event) {
+  console.log('フォームが送信されました:', event.target);
+  
+  // フォーム送信後に履歴に追加
+  setTimeout(() => {
+    checkAndSaveToHistory();
+  }, 300); // 0.3秒後にチェック
+}
+
+function checkAndSaveToHistory() {
+  // 支払先名フィールドの値を取得
+  const payeeField = document.querySelector('[data-input-text="payee-name"]');
+  if (!payeeField) return;
+  
+  const payeeName = payeeField.value.trim();
+  if (!payeeName) return;
+  
+  // 有効な支払先名かチェック（電話番号関連の文字列を除外）
+  if (payeeName.includes('電話番号') || payeeName.includes('TEL') || 
+      payeeName.includes('Tel') || payeeName.includes('電話:') || 
+      payeeName.includes('電話：')) {
+    console.log('電話番号関連の文字列のため履歴に追加しません:', payeeName);
+    return;
+  }
+  
+  // 保存の成功を示すUI要素があるかチェック（オプション）
+  const successIndicators = [
+    '.success-message',
+    '.alert-success',
+    '.notification.success',
+    '.toast.success'
+  ];
+  
+  let saveSuccess = false;
+  for (const selector of successIndicators) {
+    const element = document.querySelector(selector);
+    if (element && element.offsetParent !== null) {
+      saveSuccess = true;
+      break;
+    }
+  }
+  
+  // 成功インジケーターがない場合でも、エラーがなければ保存成功と判断
+  const errorIndicators = [
+    '.error-message',
+    '.alert-error',
+    '.notification.error',
+    '.toast.error'
+  ];
+  
+  let hasErrors = false;
+  for (const selector of errorIndicators) {
+    const element = document.querySelector(selector);
+    if (element && element.offsetParent !== null) {
+      hasErrors = true;
+      break;
+    }
+  }
+  
+  // エラーがない場合は保存成功と判断
+  if (!hasErrors) {
+    console.log('保存が完了したため履歴に追加します:', payeeName);
+    payeeNameHistory.addToHistory(payeeName);
+    
+    // 保存完了の通知（オプション）
+    showNotification(`「${payeeName}」を履歴に追加しました`, 'info', 2000);
+  } else {
+    console.log('エラーが検出されたため履歴に追加しません');
+  }
+}
+
+function setupSpaceKeyListener() {
+  // 支払先名フィールドにダブルクリックイベントを設定
+  const payeeField = document.querySelector('[data-input-text="payee-name"]');
+  if (payeeField) {
+// 支払先名フィールドにホイールイベントを設定
+payeeField.removeEventListener('wheel', handlePayeeFieldWheel);
+payeeField.addEventListener('wheel', handlePayeeFieldWheel);
+  }
+}
+
+// ホイールハンドラー
+function handlePayeeFieldWheel(e) {
+  // フィールドにフォーカスがある場合のみ処理
+  if (document.activeElement === e.target) {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('支払先名フィールドホイール回転検出');
+    showPayeeHistoryDropdown();
+  }
+}
+
+
+
+
+async function showPayeeHistoryDropdown() {
+  const payeeField = document.querySelector('[data-input-text="payee-name"]');
+  if (!payeeField) {
+    showNotification('支払先名フィールドが見つかりません', 'error');
+    return;
+  }
+  
+  const rawHistory = await payeeNameHistory.getHistory();
+  
+  if (!rawHistory || rawHistory.length === 0) {
+    showNotification('履歴がありません', 'info', 2000);
+    return;
+  }
+  
+  const sortedHistory = payeeNameHistory.sortHistory(rawHistory);
+  // 履歴名前リストを作成 - 変数名を修正
+  const historyNames = sortedHistory.map(item => item.name);  // ← 修正：正しい変数名
+  const title = payeeNameHistory.getSortModeDisplayName();
+
+
+  
+ 
+  
+  // 既存のshowDropdown関数を使用（UIの一貫性を保つため）
+  const dropdown = showDropdown({
+    id: 'payee-history-dropdown',
+    title: title, // 変更
+    items: historyNames,
+    targetField: payeeField,
+    onSelect: (name) => {
+      // フィールドに入力
+      payeeField.value = name;
+      
+      // イベント発火
+      payeeField.dispatchEvent(new Event('input', { bubbles: true }));
+      payeeField.dispatchEvent(new Event('change', { bubbles: true }));
+      
+      // 成功通知
+      showNotification(`履歴から「${name}」を選択しました`, 'success');
+      
+      // 検索ボタンを自動クリック
+      setTimeout(() => {
+        const searchButton = document.querySelector('[data-search-name]') || 
+                            document.querySelector('.btn[data-search-name]') ||
+                            document.querySelector('.btn.btn-default.kvs-table-button');
+        if (searchButton && !searchButton.disabled) searchButton.click();
+      }, 300);
+      
+      // ドロップダウンを閉じる
+      //const dropdown = document.getElementById('payee-history-dropdown');
+      //if (dropdown) dropdown.remove();
+    }
+  });
+  
+  // 履歴ドロップダウン専用のスタイルを適用
+  if (dropdown) {
+    // ヘッダー色を変更
+    const header = dropdown.querySelector('.ocr-preview-header, div:first-child');
+    if (header && header.style) {
+      header.style.backgroundColor = '#e6e0f8'; // 淡いすみれ色
+      header.style.color = '#4a3a6b';
+    }
+       // タイトル部分にクリックイベントを追加
+    const titleElement = dropdown.querySelector('div:first-child span');
+    if (titleElement) {
+      titleElement.style.cursor = 'pointer';
+      titleElement.style.userSelect = 'none';
+      titleElement.title = 'クリックでソート切替: 日付新順 → 昇順 → 降順';
+      
+      titleElement.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        // ソートモードを切り替え
+        const newMode = payeeNameHistory.toggleSortMode();
+        
+      // タイトルテキストを即座に更新 ← 追加
+        titleElement.textContent = payeeNameHistory.getSortModeDisplayName();
+        
+        // リスト部分のみを更新（ちらつき防止） ← 追加
+        updateHistoryDropdownList(dropdown, rawHistory);
+        
+        // ソート変更通知
+        let modeText = '';
+        switch (newMode) {
+          case 'asc': modeText = '昇順（あ→ん）'; break;
+          case 'desc': modeText = '降順（ん→あ）'; break;
+          case 'date': modeText = '日付新順'; break;
+        }
+        showNotification(`ソート変更: ${modeText}`, 'info', 1500);
+      });
+    }
+    // 位置調整：OCRドロップダウンより右側に配置
+    const ocrDropdown = document.getElementById('payee-name-dropdown');
+    //if (ocrDropdown) {
+      //const ocrRect = ocrDropdown.getBoundingClientRect();
+      //dropdown.style.left = (ocrRect.right + 20) + 'px'; // OCRドロップダウンの右側20px
+      //dropdown.style.top = ocrRect.top + 'px'; // 同じY位置
+    //} else {
+      // OCRドロップダウンがない場合は通常の位置
+      const payeeRect = payeeField.getBoundingClientRect();
+      dropdown.style.left = (payeeRect.right + 20) + 'px';
+      dropdown.style.top = payeeRect.top + 'px';
+    //}
+    
+    // 履歴ドロップダウンの識別用クラスを追加
+    dropdown.classList.add('payee-history-dropdown');
+  }
+  
+  // 通知表示
+  showNotification(`${rawHistory.length}件の履歴が見つかりました`, 'info', 2000);
+
+
+}
+
+/**
+ * 履歴ドロップダウンのリスト部分のみを更新する関数（ちらつき防止）
+ * @param {HTMLElement} dropdown - ドロップダウン要素
+ * @param {Array} rawHistory - 元の履歴データ
+ */
+function updateHistoryDropdownList(dropdown, rawHistory) {
+  // 既存のリストコンテナを取得
+  const listContainer = dropdown.querySelector('div:last-child');
+  if (!listContainer) return;
+  
+  // 新しいソート順で履歴を取得
+  const sortedHistory = payeeNameHistory.sortHistory(rawHistory);
+  const historyNames = sortedHistory.map(item => item.name);
+  
+  // リストコンテナをクリア
+  listContainer.innerHTML = '';
+  
+  // 支払先名フィールドを取得
+  const payeeField = document.querySelector('[data-input-text="payee-name"]');
+  
+  // 新しいリスト項目を追加
+  historyNames.forEach((name, index) => {
+    const itemElement = document.createElement('div');
+    itemElement.textContent = name;
+    itemElement.style.cssText = `
+      padding: 8px 12px;
+      cursor: pointer;
+      border-bottom: ${index < historyNames.length - 1 ? '1px solid #eee' : 'none'};
+      transition: background-color 0.15s;
+      border-left: 3px solid #e6e0f8;
+      padding-left: 15px;
+    `;
+    
+    // ホバーエフェクト
+    itemElement.addEventListener('mouseover', () => {
+      itemElement.style.backgroundColor = '#d5c9f0';
+      itemElement.style.color = '#4a3a6b';
+    });
+    itemElement.addEventListener('mouseout', () => {
+      itemElement.style.backgroundColor = 'white';
+      itemElement.style.color = '';
+    });
+    
+    // クリックイベント
+    itemElement.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      if (payeeField) {
+        // フィールドに入力
+        payeeField.value = name;
+        
+        // イベント発火
+        payeeField.dispatchEvent(new Event('input', { bubbles: true }));
+        payeeField.dispatchEvent(new Event('change', { bubbles: true }));
+        
+        // 成功通知
+        showNotification(`履歴から「${name}」を選択しました`, 'success');
+        
+        // 履歴に再追加（最新に移動）
+        payeeNameHistory.addToHistory(name);
+        
+        // 検索ボタンを自動クリック
+        setTimeout(() => {
+          const searchButton = document.querySelector('[data-search-name]') || 
+                              document.querySelector('.btn[data-search-name]') ||
+                              document.querySelector('.btn.btn-default.kvs-table-button');
+          if (searchButton && !searchButton.disabled) searchButton.click();
+        }, 300);
+        
+        // ドロップダウンを閉じる
+        dropdown.remove();
+      }
+      
+      simulateKeyPress(payeeField, 'Enter');
+    });
+    
+    listContainer.appendChild(itemElement);
+  });
+}
+
+
+
 
 /**
  * 支払先名ドロップダウンを表示する関数
@@ -4526,7 +5152,7 @@ class NotificationManager {
 // グローバル通知マネージャーの作成
 const notificationManager = new NotificationManager();
 
-function showNotification(message, type = 'info', duration = 3000) {
+function showNotification(message, type = 'info', duration = 2000) {
   // 既存の同タイプの通知を削除
   const existingNotification = document.querySelector(`.ocr-notification.${type}`);
   if (existingNotification) {
@@ -4573,7 +5199,7 @@ color: white;
   
   // 自動非表示
 if (duration && type !== 'processing') {
-  const actualDuration = type === 'error' ? 5000 : duration; // エラーは10秒固定
+  const actualDuration = type === 'error' ? 3000 : duration; // エラーは10秒固定
   setTimeout(() => {
     if (document.body.contains(notification)) {
       document.body.removeChild(notification);

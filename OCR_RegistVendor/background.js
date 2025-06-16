@@ -200,7 +200,7 @@ class APIRequestQueue {
     this.queue = [];
     this.processing = false;
     this.lastRequest = 0;
-    this.minInterval = 1000; // 1秒間隔
+    this.minInterval = 500; // 0.5秒間隔
   }
   
   async execute(requestFn) {
@@ -231,7 +231,7 @@ class APIRequestQueue {
       this.lastRequest = Date.now();
       this.processing = false;
       // 次のキュー処理を少し遅延させる
-      setTimeout(() => this.processQueue(), 100);
+      setTimeout(() => this.processQueue(), 50);
     }
   }
   
@@ -397,7 +397,7 @@ async function extractTextWithGemini(imageData, options = {}) {
         // APIリクエストを送信（タイムアウト制御付き）
         let timeoutId;
         const timeoutPromise = new Promise((_, reject) => {
-          timeoutId = setTimeout(() => reject(new Error('APIリクエストがタイムアウトしました')), 20000); // 20秒に延長
+          timeoutId = setTimeout(() => reject(new Error('APIリクエストがタイムアウトしました')), 15000); // 15秒に延長
         });
         
         const fetchPromise = fetch(apiUrl, {
@@ -472,7 +472,7 @@ async function extractTextWithGemini(imageData, options = {}) {
           attempt++;
           
           // キューイング機構により既に間隔制御されているため、リトライ遅延は短縮
-          const retryDelay = 2000 * Math.pow(2, attempt - 1); // 2秒、4秒
+          const retryDelay = 1000 * Math.pow(1.5, attempt - 1);
           console.log(`${retryDelay}ms後にリトライします...`);
           await new Promise(resolve => setTimeout(resolve, retryDelay));
           continue;
@@ -519,6 +519,28 @@ function getPromptForModel(model, language, mode, fieldType) {
     } else {
       return `以下の画像に含まれるテキストを抽出してください。言語は${language === 'ja' ? '日本語' : language === 'en' ? '英語' : '複数言語'}です。
 ${mode === 'accurate' ? '文字の形や特徴を細かく観察し、文脈を考慮して正確に認識してください。特に小さな文字や低コントラストの文字も注意深く認識してください。似た文字（例：「り」と「リ」、「0」と「O」、「l」と「1」など）は文脈から判断して区別してください。' : ''}
+レイアウトは無視して純粋なテキストのみを出力してください。`;
+    }
+  }else if (model === 'gemini-2.0-flash-light') {
+    if (fieldType === 'phone-number') {
+      return `画像内の電話番号を正確に抽出してください。数字、ハイフン、カンマのみを返してください。例: 03-1234-5678。
+複数の電話番号があれば、カンマで区切って全て抽出してください。
+余計な説明や文字は不要です。Tで始まる13桁の事業者番号は無視してください。
+国際的な標準形式（+81）も適切に処理してください。`;
+    } else if (fieldType === 'payee-name') {
+      return `画像から以下を抽出してください:
+1. 会社名: 法人格(株式会社など)と支店名を除いた正確な名称。ひらがな・カタカナ・漢字などを正確に区別し、複数ある場合はカンマ区切り。
+2. 電話番号: ハイフン含む完全な番号。複数ある場合はカンマ区切り。T始まりの13桁事業者番号は除外。
+
+形式:
+会社名: [抽出結果]
+電話番号: [抽出結果]
+
+画像の解像度が低くても最大限正確に読み取ってください。検出できない項目は空欄にしてください。`;
+    } else {
+      return `以下の画像に含まれるテキストを抽出してください。言語は${language === 'ja' ? '日本語' : language === 'en' ? '英語' : '複数言語'}です。
+文字の形や特徴を細かく観察し、文脈を考慮して正確に認識してください。特に小さな文字や低コントラストの文字も注意深く認識してください。
+似た文字（例：「り」と「リ」、「0」と「O」、「l」と「1」など）は文脈から判断して区別してください。
 レイアウトは無視して純粋なテキストのみを出力してください。`;
     }
   }
@@ -1234,12 +1256,12 @@ async function optimizeImage(imageData, options = {}) {
     }
     
 // 必要な場合のみ画像処理を適用
-if ((options.enhanceText || options.contrast) && canvas.width * canvas.height < 500000) {  
+if ((options.enhanceText || options.contrast) && canvas.width * canvas.height < 300000) {  
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const data = imageData.data;
   
   if (options.contrast) {
-    const factor = options.contrast || 1.2;
+    const factor = options.contrast || 1.15;
     for (let i = 0; i < data.length; i += 4) {
       for (let j = 0; j < 3; j++) {
         data[i + j] = Math.max(0, Math.min(255, Math.round((data[i + j] - 128) * factor + 128)));
@@ -1253,7 +1275,7 @@ if ((options.enhanceText || options.contrast) && canvas.width * canvas.height < 
     // 最適な品質を決定
     const quality = typeof options.quality === 'number' ? 
       options.quality : 
-      (canvas.width * canvas.height > 1000000 ? 0.85 : 0.92);
+      (canvas.width * canvas.height > 800000 ? 0.88 : 0.95);
     
     // BlobからデータURLに変換
     const resultBlob = await canvas.convertToBlob({

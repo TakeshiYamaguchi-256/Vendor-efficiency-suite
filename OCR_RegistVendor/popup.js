@@ -190,15 +190,17 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // ヘルプテキストの更新
     const helpText = document.querySelector('.model-section .help-text');
-    if (helpText) {
-      if (this.value === 'gemini-2.5-flash') {
-        helpText.textContent = 'Gemini 2.5 Flashは最新モデルで、より高度な文字認識能力を持ちます。';
-      } else if (this.value === 'gemini-1.5-flash') {
-        helpText.textContent = 'Gemini 1.5 Flashは一部のケースでより高い認識精度を持ちます。';
-      } else {
-        helpText.textContent = '文字認識の精度と速度のバランスを調整できます。問題がある場合は別のモデルをお試しください。';
-      }
+  if (helpText) {
+    if (this.value === 'gemini-2.5-flash') {
+      helpText.textContent = 'Gemini 2.5 Flashは最新モデルで、より高度な文字認識能力を持ちます。';
+    } else if (this.value === 'gemini-2.0-flash-light') {
+      helpText.textContent = 'Gemini 2.0 Flash Lightは高速で低コストな軽量版モデルです。基本的な文字認識に適しています。';
+    } else if (this.value === 'gemini-1.5-flash') {
+      helpText.textContent = 'Gemini 1.5 Flashは一部のケースでより高い認識精度を持ちます。';
+    } else {
+      helpText.textContent = '文字認識の精度と速度のバランスを調整できます。問題がある場合は別のモデルをお試しください。';
     }
+  }
   });
 
   // 保存された設定を読み込む
@@ -209,13 +211,15 @@ document.addEventListener('DOMContentLoaded', function() {
       
       // ヘルプテキストの更新
       const helpText = document.querySelector('.model-section .help-text');
-      if (helpText) {
-        if (result.geminiModel === 'gemini-2.5-flash') {
-          helpText.textContent = 'Gemini 2.5 Flashは最新モデルで、より高度な文字認識能力を持ちます。';
-        } else if (result.geminiModel === 'gemini-1.5-flash') {
-          helpText.textContent = 'Gemini 1.5 Flashは一部のケースでより高い認識精度を持ちます。';
-        }
+    if (helpText) {
+      if (result.geminiModel === 'gemini-2.5-flash') {
+        helpText.textContent = 'Gemini 2.5 Flashは最新モデルで、より高度な文字認識能力を持ちます。';
+      } else if (result.geminiModel === 'gemini-2.0-flash-light') {
+        helpText.textContent = 'Gemini 2.0 Flash Lightは高速で低コストな軽量版モデルです。基本的な文字認識に適しています。';
+      } else if (result.geminiModel === 'gemini-1.5-flash') {
+        helpText.textContent = 'Gemini 1.5 Flashは一部のケースでより高い認識精度を持ちます。';
       }
+    }
     }
     
     // OCRモード設定
