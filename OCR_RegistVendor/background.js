@@ -521,7 +521,7 @@ function getPromptForModel(model, language, mode, fieldType) {
 ${mode === 'accurate' ? '文字の形や特徴を細かく観察し、文脈を考慮して正確に認識してください。特に小さな文字や低コントラストの文字も注意深く認識してください。似た文字（例：「り」と「リ」、「0」と「O」、「l」と「1」など）は文脈から判断して区別してください。' : ''}
 レイアウトは無視して純粋なテキストのみを出力してください。`;
     }
-  }else if (model === 'gemini-2.0-flash-light') {
+  }else if (model === 'gemini-2.0-flash-lite') {
     if (fieldType === 'phone-number') {
       return `画像内の電話番号を正確に抽出してください。数字、ハイフン、カンマのみを返してください。例: 03-1234-5678。
 複数の電話番号があれば、カンマで区切って全て抽出してください。
